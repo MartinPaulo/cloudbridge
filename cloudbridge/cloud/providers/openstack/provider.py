@@ -1,5 +1,7 @@
 """Provider implementation based on OpenStack Python clients for OpenStack."""
 
+import inspect
+
 import os
 
 from cinderclient import client as cinder_client
@@ -137,7 +139,7 @@ class OpenStackCloudProvider(BaseCloudProvider):
     @property
     def swift(self):
         if not self._swift:
-            self._swift = self._connect_swift()
+            self._swift = self.connect_swift()
         return self._swift
 
     @property
@@ -236,19 +238,48 @@ class OpenStackCloudProvider(BaseCloudProvider):
 #         return glance_client.Client(version=api_version,
 #                                     session=self.keystone.session)
 
-    def _connect_swift(self):
+    @staticmethod
+    def _clean_options(options, method_to_match):
+        """ 
+        :param options: The source options.
+        :param method_to_match: The method whose signature is to be matched
+        :return: A copy of the source options with all keys that are not in the
+            ``method_to_match`` parameter list removed. If options is ``None`` 
+            then will be an empty dictionary
+        """
+        result = dict(options or {})
+        if len(result):
+            # Don't allow the options to override our authentication
+            result['os_options'] = None
+            passed_in_options = set(result.keys())
+            method_signature = inspect.signature(method_to_match)
+            parameters = set(method_signature.parameters.keys())
+            difference = passed_in_options - parameters
+            for name in difference:
+                del result[name]
+        return result
+
+    def connect_swift(self, options=None):
+        """
+        Get an OpenStack Swift (object store) client connection.
+        
+        :param options: A dictionary of options from which values will be 
+            passed to the connection.
+        :return: A Swift client connection using the auth credentials held by
+            the OpenStackCloudProvider instance 
+        """
+        clean_options = self._clean_options(options, swift_client.Connection)
         storage_url = self._get_config_value(
             'os_storage_url', os.environ.get('OS_STORAGE_URL', None))
         auth_token = self._get_config_value(
             'os_auth_token', os.environ.get('OS_AUTH_TOKEN', None))
-
-        """Get an OpenStack Swift (object store) client object cloud."""
         if storage_url and auth_token:
-            return swift_client.Connection(preauthurl=storage_url,
-                                           preauthtoken=auth_token)
+            clean_options['preauthurl'] = storage_url
+            clean_options['preauthtoken'] = auth_token
         else:
-            return swift_client.Connection(authurl=self.auth_url,
-                                           session=self._keystone_session)
+            clean_options['authurl'] = self.auth_url
+            clean_options['session'] = self._keystone_session
+        return swift_client.Connection(**clean_options)
 
     def _connect_neutron(self):
         """Get an OpenStack Neutron (networking) client object cloud."""
