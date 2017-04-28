@@ -139,7 +139,7 @@ class OpenStackCloudProvider(BaseCloudProvider):
     @property
     def swift(self):
         if not self._swift:
-            self._swift = self._connect_swift()
+            self._swift = self.connect_swift()
         return self._swift
 
     @property
