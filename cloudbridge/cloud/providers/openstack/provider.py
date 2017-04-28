@@ -258,8 +258,11 @@ class OpenStackCloudProvider(BaseCloudProvider):
             # Don't allow the options to override our authentication
             result['os_options'] = None
             passed_in_options = set(result.keys())
-            method_signature = inspect.signature(method_to_match)
-            parameters = set(method_signature.parameters.keys())
+            try:
+                method_signature = inspect.signature(method_to_match)
+                parameters = set(method_signature.parameters.keys())
+            except AttributeError:
+                parameters = set(inspect.getargspec(method_to_match)[0])
             difference = passed_in_options - parameters
             for name in difference:
                 del result[name]
@@ -274,7 +277,8 @@ class OpenStackCloudProvider(BaseCloudProvider):
         :return: A Swift client connection using the auth credentials held by
             the OpenStackCloudProvider instance
         """
-        clean_options = self._clean_options(options, swift_client.Connection)
+        clean_options = self._clean_options(options,
+                                            swift_client.Connection.__init__)
         storage_url = self._get_config_value(
             'os_storage_url', os.environ.get('OS_STORAGE_URL', None))
         auth_token = self._get_config_value(
